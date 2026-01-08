@@ -26,8 +26,8 @@ class APIFootballCollector:
         self.api_key = api_key
         self.base_url = "https://v3.football.api-sports.io"
         self.headers = {
-             'x-apisports-key': api_key,  # Changed from x-rapidapi-key
-            'x-rapidapi-host': 'v3.football.api-sports.io'
+             'x-apisports-key': api_key  # Changed from x-rapidapi-key
+
         }
         self.db_params = db_params
         self.premier_league_id = 39  # API-Football ID for Premier League
@@ -104,28 +104,107 @@ class APIFootballCollector:
         
         stats = data['response']
         
-        # Extract key statistics
+        # Safely extract nested values with .get() to avoid KeyErrors
+        fixtures = stats.get('fixtures', {})
+        goals_for = stats.get('goals', {}).get('for', {})
+        goals_against = stats.get('goals', {}).get('against', {})
+        
         return {
             'team_id': team_id,
-            'games_played': stats['fixtures']['played']['total'],
-            'wins': stats['fixtures']['wins']['total'],
-            'draws': stats['fixtures']['draws']['total'],
-            'losses': stats['fixtures']['losses']['total'],
-            'goals_for': stats['goals']['for']['total']['total'],
-            'goals_against': stats['goals']['against']['total']['total'],
-            'avg_goals_for': stats['goals']['for']['average']['total'],
-            'avg_goals_against': stats['goals']['against']['average']['total'],
-            'form': stats['form'],
-            'home_wins': stats['fixtures']['wins']['home'],
-            'home_draws': stats['fixtures']['draws']['home'],
-            'home_losses': stats['fixtures']['losses']['home'],
-            'away_wins': stats['fixtures']['wins']['away'],
-            'away_draws': stats['fixtures']['draws']['away'],
-            'away_losses': stats['fixtures']['losses']['away']
+            'games_played': fixtures.get('played', {}).get('total', 0),
+            'wins': fixtures.get('wins', {}).get('total', 0),
+            'draws': fixtures.get('draws', {}).get('total', 0),
+            'losses': fixtures.get('loses', {}).get('total', 0),  # ← Changed to 'loses'
+            'goals_for': goals_for.get('total', {}).get('total', 0),
+            'goals_against': goals_against.get('total', {}).get('total', 0),
+            'avg_goals_for': float(goals_for.get('average', {}).get('total', '0') or 0),
+            'avg_goals_against': float(goals_against.get('average', {}).get('total', '0') or 0),
+            'form': stats.get('form', ''),
+            'home_wins': fixtures.get('wins', {}).get('home', 0),
+            'home_draws': fixtures.get('draws', {}).get('home', 0),
+            'home_losses': fixtures.get('loses', {}).get('home', 0),  # ← Changed
+            'away_wins': fixtures.get('wins', {}).get('away', 0),
+            'away_draws': fixtures.get('draws', {}).get('away', 0),
+            'away_losses': fixtures.get('loses', {}).get('away', 0)  # ← Changed
         }
-    
+  
+
+    def get_all_fixtures_by_season(self, season: int) -> pd.DataFrame:
+        """Get ALL fixtures for an entire season"""
+        params = {
+            'league': self.premier_league_id,
+            'season': season
+        }
+        
+        print(f"\nFetching all fixtures for {season} season...")
+        data = self._make_request('fixtures', params)
+        
+        if not data or 'response' not in data:
+            return pd.DataFrame()
+        
+        fixtures = []
+        total_matches = len(data['response'])
+        print(f"Found {total_matches} fixtures")
+        
+        for idx, match in enumerate(data['response'], 1):
+            # Only process completed matches
+            if match['fixture']['status']['short'] == 'FT':
+                fixture_data = {
+                    'fixture_id': match['fixture']['id'],
+                    'season': season,
+                    'date': match['fixture']['date'],
+                    'home_team_id': match['teams']['home']['id'],
+                    'home_team': match['teams']['home']['name'],
+                    'away_team_id': match['teams']['away']['id'],
+                    'away_team': match['teams']['away']['name'],
+                    'home_goals': match['goals']['home'],
+                    'away_goals': match['goals']['away'],
+                    'result': self._get_result(match['goals']['home'], match['goals']['away'])
+                }
+                
+                fixtures.append(fixture_data)
+                
+                # Progress indicator
+                if idx % 50 == 0:
+                    print(f"  Processed {idx}/{total_matches} fixtures...")
+        
+        print(f"✓ Collected {len(fixtures)} completed fixtures")
+        return pd.DataFrame(fixtures)
+
+    def enrich_fixtures_with_statistics(self, fixtures_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add match statistics (shots, possession, etc.) to fixtures dataframe
+        
+        Args:
+            fixtures_df: DataFrame with fixture data
+            
+        Returns:
+            DataFrame with added statistics columns
+        """
+        print(f"\nEnriching {len(fixtures_df)} fixtures with match statistics...")
+        
+        enriched_fixtures = []
+        
+        for idx, row in fixtures_df.iterrows():
+            fixture_id = row['fixture_id']
+            
+            # Get statistics for this fixture
+            stats = self.get_fixture_statistics(fixture_id)
+            
+            # Combine fixture data with statistics
+            enriched_row = {**row.to_dict(), **stats}
+            enriched_fixtures.append(enriched_row)
+            
+            # Progress indicator
+            if (idx + 1) % 50 == 0:
+                print(f"  Processed {idx + 1}/{len(fixtures_df)} fixtures...")
+        
+        print(f"✓ Enrichment complete!")
+        return pd.DataFrame(enriched_fixtures)
+
+
     def get_fixture_statistics(self, fixture_id: int) -> Dict:
-        """Get detailed statistics for a completed fixture (including xG)"""
+        """Get detailed statistics for a completed fixture"""
         params = {'fixture': fixture_id}
         data = self._make_request('fixtures/statistics', params)
         
@@ -147,14 +226,21 @@ class APIFootballCollector:
         
         return {
             'fixture_id': fixture_id,
-            'home_xg': extract_stat(home_stats, 'expected_goals'),
-            'away_xg': extract_stat(away_stats, 'expected_goals'),
+            # REMOVED xG - not available
             'home_shots': extract_stat(home_stats, 'Total Shots'),
             'away_shots': extract_stat(away_stats, 'Total Shots'),
             'home_shots_on_target': extract_stat(home_stats, 'Shots on Goal'),
             'away_shots_on_target': extract_stat(away_stats, 'Shots on Goal'),
             'home_possession': extract_stat(home_stats, 'Ball Possession'),
-            'away_possession': extract_stat(away_stats, 'Ball Possession')
+            'away_possession': extract_stat(away_stats, 'Ball Possession'),
+            'home_shots_inside_box': extract_stat(home_stats, 'Shots insidebox'),
+            'away_shots_inside_box': extract_stat(away_stats, 'Shots insidebox'),
+            'home_shots_outside_box': extract_stat(home_stats, 'Shots outsidebox'),
+            'away_shots_outside_box': extract_stat(away_stats, 'Shots outsidebox'),
+            'home_corners': extract_stat(home_stats, 'Corner Kicks'),
+            'away_corners': extract_stat(away_stats, 'Corner Kicks'),
+            'home_fouls': extract_stat(home_stats, 'Fouls'),
+            'away_fouls': extract_stat(away_stats, 'Fouls')
         }
     
     def get_historical_fixtures(self, last_n_rounds: int = 10) -> pd.DataFrame:
@@ -234,29 +320,35 @@ class APIFootballCollector:
         
         # Fixtures table
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS fixtures (
-                fixture_id INTEGER PRIMARY KEY,
-                date TIMESTAMP,
-                home_team_id INTEGER,
-                home_team VARCHAR(100),
-                away_team_id INTEGER,
-                away_team VARCHAR(100),
-                venue VARCHAR(200),
-                status VARCHAR(20),
-                home_goals INTEGER,
-                away_goals INTEGER,
-                result VARCHAR(1),
-                home_xg FLOAT,
-                away_xg FLOAT,
-                home_shots INTEGER,
-                away_shots INTEGER,
-                home_shots_on_target INTEGER,
-                away_shots_on_target INTEGER,
-                home_possession FLOAT,
-                away_possession FLOAT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+                CREATE TABLE IF NOT EXISTS fixtures (
+                    fixture_id INTEGER PRIMARY KEY,
+                    date TIMESTAMP,
+                    home_team_id INTEGER,
+                    home_team VARCHAR(100),
+                    away_team_id INTEGER,
+                    away_team VARCHAR(100),
+                    venue VARCHAR(200),
+                    status VARCHAR(20),
+                    home_goals INTEGER,
+                    away_goals INTEGER,
+                    result VARCHAR(1),
+                    home_shots INTEGER,
+                    away_shots INTEGER,
+                    home_shots_on_target INTEGER,
+                    away_shots_on_target INTEGER,
+                    home_shots_inside_box INTEGER,
+                    away_shots_inside_box INTEGER,
+                    home_shots_outside_box INTEGER,
+                    away_shots_outside_box INTEGER,
+                    home_possession FLOAT,
+                    away_possession FLOAT,
+                    home_corners INTEGER,
+                    away_corners INTEGER,
+                    home_fouls INTEGER,
+                    away_fouls INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         
         # Team statistics table
         cur.execute("""
@@ -331,8 +423,8 @@ class APIFootballCollector:
                 home_goals = EXCLUDED.home_goals,
                 away_goals = EXCLUDED.away_goals,
                 result = EXCLUDED.result,
-                home_xg = EXCLUDED.home_xg,
-                away_xg = EXCLUDED.away_xg
+                home_shots = EXCLUDED.home_shots,
+                away_shots = EXCLUDED.away_shots
         """
         
         execute_values(cur, query, values, template=None, page_size=100)

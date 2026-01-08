@@ -1,0 +1,35 @@
+# Data files (too large for Git)
+data/*.csv
+data/*.xlsx
+
+# Model files (too large for Git)
+models/*.pkl
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# API keys and sensitive config
+src/config.py
+
+# Virtual environment
+venv/
+env/
+.venv
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+*.log
+*.tmp
