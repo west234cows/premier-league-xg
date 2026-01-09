@@ -5,7 +5,9 @@ Collect 2-3 seasons of Premier League historical data for model training
 from api_football_collector import APIFootballCollector
 from config import API_FOOTBALL_KEY, DB_PARAMS
 import pandas as pd
+import os
 from datetime import datetime
+from paths import DATA_DIR,require_dirs
 
 def main():
     print("="*70)
@@ -52,10 +54,13 @@ def main():
         print(f"\nResults distribution:")
         print(combined_df['result'].value_counts())
         
+        # Check Directory Exists
+        require_dirs(assert_only=True)
+
         # Save to CSV
-        filename = f"pl_historical_fixtures_{datetime.now().strftime('%Y%m%d')}.csv"
+        filename = os.path.join(DATA_DIR, f"pl_historical_fixtures_{datetime.now().strftime('%Y%m%d')}.csv")
         combined_df.to_csv(filename, index=False)
-        print(f"\n✓ Saved to: {filename}")
+        print(f"Saved: {filename}")
         
         print(f"\n{'='*70}")
         print("NEXT STEPS")

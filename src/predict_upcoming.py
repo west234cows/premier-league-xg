@@ -3,21 +3,36 @@
 Generate predictions for upcoming Premier League fixtures
 Uses trained Random Forest model to predict Home Win / Draw / Away Win probabilities
 """
+import os
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import joblib
 from api_football_collector import APIFootballCollector
 from config import API_FOOTBALL_KEY, DB_PARAMS
+from paths import DATA_DIR,MODELS_DIR,require_dirs
+
+def select_latest(dir_path: str, prefix: str, suffix: str) -> str:
+    files = [f for f in os.listdir(dir_path) if f.startswith(prefix) and f.endswith(suffix)]
+    if not files:
+        raise FileNotFoundError(f"No files in {dir_path} matching {prefix}*{suffix}")
+    try:
+        latest = max(files, key=lambda x: x.rsplit("_", 1)[-1].split(".")[0])
+    except Exception:
+        latest = max(files, key=lambda f: os.path.getmtime(os.path.join(dir_path, f)))
+    return os.path.join(dir_path, latest)
 
 def load_model_and_scaler():
     """Load trained model and scaler"""
     print("="*70)
     print("Loading trained model and scaler...")
     print("="*70)
-    model = joblib.load('pl_model_random_forest_20260108.pkl')
-    scaler = joblib.load('pl_scaler_20260108.pkl')
-    print("✓ Model and scaler loaded\n")
+    scaler_path = select_latest(MODELS_DIR, "pl_scaler_", ".pkl")
+    model_path = select_latest(MODELS_DIR, "pl_model_", ".pkl")
+    scaler = joblib.load(scaler_path)
+    model = joblib.load(model_path)
+    print(f"✓ Model loaded:  {model_path}")
+    print(f"✓ Scaler loaded: {scaler_path}\n")
     return model, scaler
 
 
@@ -217,6 +232,8 @@ def main():
     print("="*70)
     print("PREMIER LEAGUE UPCOMING FIXTURE PREDICTIONS")
     print("="*70)
+
+    require_dirs(assert_only=True)
     
     # Load model
     model, scaler = load_model_and_scaler()
@@ -236,9 +253,10 @@ def main():
     
     # Load historical data
     print("Loading historical data for feature calculation...")
-    historical = pd.read_csv('pl_historical_enriched_20260108.csv')
+    hist_path = select_latest(DATA_DIR, "pl_historical_enriched_", ".csv")
+    historical = pd.read_csv(hist_path)
     historical['date'] = pd.to_datetime(historical['date'])
-    print(f"✓ Loaded {len(historical)} historical fixtures\n")
+    print(f"✓ Loaded {len(historical)} historical fixtures from {hist_path}\n")
     
     # Generate predictions
     print("="*70)
@@ -306,19 +324,20 @@ def main():
     # Save predictions
     if predictions:
         pred_df = pd.DataFrame(predictions)
-        output_file = f"pl_predictions_{datetime.now().strftime('%Y%m%d')}.csv"
-        pred_df.to_csv(output_file, index=False)
+        out_path = os.path.join(DATA_DIR, f"pl_predictions_{datetime.now().strftime('%Y%m%d')}.csv")
+        pred_df.to_csv(out_path, index=False)
         
         print(f"\n{'='*70}")
         print("PREDICTIONS SUMMARY")
         print(f"{'='*70}")
         print(f"✓ Generated predictions for {len(predictions)} fixtures")
-        print(f"✓ Saved to: {output_file}\n")
-        
+        print(f"✓ Saved to: {out_path}\n")
+
         print(pred_df[['date', 'home_team', 'away_team', 'predicted_result', 
                        'max_probability', 'confidence']])
     else:
         print("\n✗ No predictions generated")
+
 
 if __name__ == "__main__":
     main()

@@ -15,6 +15,18 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 import joblib
+import os
+from paths import DATA_DIR,require_dirs,MODELS_DIR
+
+def select_latest_features() -> str:
+    files = [f for f in os.listdir(DATA_DIR) if f.startswith("pl_features_complete_") and f.endswith(".csv")]
+    if not files:
+        raise FileNotFoundError(f"No features files found in {DATA_DIR}")
+    try:
+        latest = max(files, key=lambda x: x.rsplit("_", 1)[-1].split(".")[0])
+    except Exception:
+        latest = max(files, key=lambda f: os.path.getmtime(os.path.join(DATA_DIR, f)))
+    return os.path.join(DATA_DIR, latest)
 
 def prepare_data(features_file):
     """Load and prepare data for modeling"""
@@ -201,29 +213,28 @@ def main():
     print("PREMIER LEAGUE WIN PROBABILITY MODEL TRAINING")
     print("="*70)
     
-    # Prepare data
-    data = prepare_data('pl_features_complete_20260108.csv')
-    
-    # Train models
+    require_dirs(assert_only=True)
+
+    features_path = select_latest_features()
+    data = prepare_data(features_path)
+
     models = train_models(data)
-    
-    # Evaluate models
     results, best_model = evaluate_models(models, data)
     
-    # Save best model
     print(f"\n{'='*70}")
     print("SAVING MODELS")
     print(f"{'='*70}")
-    
-    model_file = f"pl_model_{best_model.replace(' ', '_').lower()}_{datetime.now().strftime('%Y%m%d')}.pkl"
-    scaler_file = f"pl_scaler_{datetime.now().strftime('%Y%m%d')}.pkl"
-    
+
+    ts = datetime.now().strftime("%Y%m%d")
+    model_file = os.path.join(MODELS_DIR, f"pl_model_{best_model.replace(' ', '_').lower()}_{ts}.pkl")
+    scaler_file = os.path.join(MODELS_DIR, f"pl_scaler_{ts}.pkl")
+
     joblib.dump(models[best_model], model_file)
     joblib.dump(data['scaler'], scaler_file)
-    
+
     print(f"✓ Best model saved: {model_file}")
     print(f"✓ Scaler saved: {scaler_file}")
-    
+
     print(f"\n{'='*70}")
     print("TRAINING COMPLETE!")
     print(f"{'='*70}")

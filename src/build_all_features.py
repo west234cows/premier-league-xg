@@ -6,6 +6,18 @@ Builds predictive features for Premier League win probability model
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import os
+from paths import DATA_DIR,require_dirs
+
+def select_latest_enriched() -> str:
+    files = [f for f in os.listdir(DATA_DIR) if f.startswith("pl_historical_enriched_") and f.endswith(".csv")]
+    if not files:
+        raise FileNotFoundError(f"No enriched files found in {DATA_DIR}")
+    try:
+        latest = max(files, key=lambda x: x.rsplit("_", 1)[-1].split(".")[0])  # pick by YYYYMMDD
+    except Exception:
+        latest = max(files, key=lambda f: os.path.getmtime(os.path.join(DATA_DIR, f)))  # fallback by mtime
+    return os.path.join(DATA_DIR, latest)
 
 def calculate_team_form(df, team_id, n_games=5, as_home=None):
     """
@@ -274,21 +286,24 @@ def main():
     print("COMPLETE FEATURE ENGINEERING PIPELINE")
     print("Stages 1, 2, 3: Team Form + Advanced Metrics + Match Context")
     print("="*70)
-    
-    # Load enriched data
+
+    require_dirs(assert_only=True)
+
+    # Load enriched data from data/
     print("\nLoading enriched data...")
-    df = pd.read_csv('pl_historical_enriched_20260108.csv')
-    print(f"✓ Loaded {len(df)} fixtures")
-    
+    enriched_path = select_latest_enriched()
+    df = pd.read_csv(enriched_path)
+    print(f"✓ Loaded {len(df)} fixtures from {enriched_path}")
+
     # Convert date to datetime
     df['date'] = pd.to_datetime(df['date'])
     
     # Build all features
     features_df = build_complete_features(df)
     
-    # Save
-    output_file = f"pl_features_complete_{datetime.now().strftime('%Y%m%d')}.csv"
-    features_df.to_csv(output_file, index=False)
+    # Save to data/
+    output_path = os.path.join(DATA_DIR, f"pl_features_complete_{datetime.now().strftime('%Y%m%d')}.csv")
+    features_df.to_csv(output_path, index=False)
     
     print(f"\n{'='*70}")
     print("FEATURE ENGINEERING COMPLETE")
@@ -316,7 +331,7 @@ def main():
     for f in stage3_features:
         print(f"  - {f}")
     
-    print(f"\n✓ Saved to: {output_file}")
+    print(f"\n✓ Saved to: {output_path}")
     
     # Show sample
     print(f"\n{'='*70}")
