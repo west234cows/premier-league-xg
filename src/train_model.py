@@ -107,7 +107,7 @@ def train_models(data):
     print("\n1. Training Logistic Regression...")
     lr_model = LogisticRegression(
         max_iter=1000,
-        multi_class='multinomial',
+        #multi_class='multinomial', 
         random_state=42
     )
     lr_model.fit(data['X_train'], data['y_train'])
