@@ -58,19 +58,10 @@ def get_upcoming_fixtures():
     
     # Get fixtures in the next 14 days that don't have results yet
     query = """
-        SELECT 
-            fixture_id,
-            date,
-            home_team,
-            away_team,
-            home_team_id,
-            away_team_id
-        FROM fixtures
-        WHERE date >= CURRENT_DATE
-        AND date <= CURRENT_DATE + INTERVAL '14 days'
-        AND result IS NULL
-        ORDER BY date
-    """
+    SELECT * FROM fixtures
+    WHERE date > CURRENT_TIMESTAMP
+    ORDER BY date
+"""
     
     df = pd.read_sql(query, conn)
     conn.close()
