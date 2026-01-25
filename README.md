@@ -2,6 +2,46 @@
 
 Machine learning system predicting Premier League match outcomes (Home Win / Draw / Away Win) using API-Football data.
 
+
+
+
+## 🚀 Quick Start
+
+### View Dashboard
+```bash
+streamlit run dashboard.py
+```
+Access at: http://localhost:8501
+
+### Run Daily Updates
+```bash
+python3 run_daily_tasks.py
+```
+
+### Manual Commands
+```bash
+# Fetch new fixtures
+python3 src/fetch_upcoming_fixtures.py
+
+# Generate predictions
+python3 src/predict_upcoming.py
+
+# Track results
+python3 track_predictions.py
+```
+
+---
+
+## 📊 Current Status
+
+**✅ Phase 1:** Data Collection (Complete)
+**✅ Phase 2:** PostgreSQL Integration (Complete)  
+**✅ Phase 3:** Dashboard & Visualization (Complete)
+**✅ Phase 4:** Prediction Tracking (Complete)
+**✅ Phase 5:** Daily Automation (Complete)
+**🔄 Phase 6:** Cloud Deployment (Next)
+
+---
 **Current Status:** ✅ Model trained (54% accuracy), predictions working, ready for database + dashboard integration
 
 ---
